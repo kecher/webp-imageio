@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
+import java.util.Iterator;
 
 final class WebP {
   private static boolean NATIVE_LIBRARY_LOADED = false;
@@ -37,7 +38,9 @@ final class WebP {
   static {
     loadNativeLibrary();
   }
-
+	public static void main(String[] args) {
+		System.out.println("Hello");
+	}
   private WebP() {
   }
 
@@ -93,32 +96,108 @@ final class WebP {
   }
 
   private static native byte[] encodeRGB(long aConfig, byte[] aRgbaData, int aWidth, int aHeight, int aStride);
+
 }
+
+
+enum Arch{
+	Linux64 {
+		String os() {
+			return "linux";
+		}
+
+		String libFile() {
+			return "libwebp-imageio.so";
+		}
+
+	},Win32 {
+
+		String os() {
+			return "win";
+		}
+		
+		String bits() {
+			return "32";
+		}
+		
+		String libFile() {
+			return "webp-imageio.dll";
+		}
+	},Win64 {
+		String os() {
+			return "win";
+		}
+
+		String libFile() {
+			return "webp-imageio.dll";
+		}
+		
+	},Mac64 {
+
+		String os() {
+			return "mac";
+		}
+
+		String libFile() {
+			return "libwebp-imageio.dylib";
+		}
+	},Macaarch64 {
+
+		String os() {
+			return "mac";
+		}
+
+		String arch() {
+			return "arm";
+		}
+		
+		String libFile() {
+			return "libwebp-imageio.dylib";
+		}
+		
+	};
+	
+	abstract String os();
+	abstract String libFile();
+	
+	String libraryPath() {
+		return String.format("/native/%s/%s/%s/%s", os(), arch(), bits(), libFile());
+	}
+	
+	String bits() {
+		return "64";
+	}
+	
+	String arch() {
+		return "intel";
+	}
+	
+	static Arch detect() {
+		String os = System.getProperty("os.name").toLowerCase();
+		String bits = System.getProperty("os.arch").contains("64") ? "64": "32";
+		String arch = System.getProperty("os.arch").toLowerCase().contains("aarch64")?"arm":"intel";
+		for (Arch a:values()) {
+			if (os.contains(a.os())&&bits.equals(a.bits())&&arch.equals(a.arch()))
+					return a;
+		}
+		return Linux64;
+	}
+	
+}
+
 
 class NativeLibraryUtils {
 
   public static void loadFromJar() {
-    String os = System.getProperty("os.name").toLowerCase();
-    String bits = System.getProperty("os.arch").contains("64") ? "64": "32";
-
-    String libFilename = "libwebp-imageio.so";
-    String platform = "linux";
-
-    if(os.contains("win")) {
-      platform = "win";
-      libFilename = "webp-imageio.dll";
-    } else if(os.contains("mac")) {
-      platform = "mac";
-      libFilename = "libwebp-imageio.dylib";
-    }
-
+   
     // copy the native lib from the jar to a temp file on disk and load from there
-    try (InputStream in = NativeLibraryUtils.class.getResourceAsStream(String.format("/native/%s/%s/%s", platform, bits, libFilename))){
+    final Arch architecture = Arch.detect();
+	try (InputStream in = NativeLibraryUtils.class.getResourceAsStream(architecture.libraryPath())){
       if(in == null) {
-        throw new RuntimeException(String.format("Could not find WebP native library for %s %s in the jar", platform, bits));
+        throw new RuntimeException(String.format("Could not find WebP native library for %s %s in the jar", architecture.os(), architecture.bits()));
       }
 
-      File tmpLibraryFile = Files.createTempFile("", libFilename).toFile();
+      File tmpLibraryFile = Files.createTempFile("", architecture.libFile()).toFile();
       tmpLibraryFile.deleteOnExit();
       try (FileOutputStream out = new FileOutputStream(tmpLibraryFile)) {
         byte[] buffer = new byte[8 * 1024];
